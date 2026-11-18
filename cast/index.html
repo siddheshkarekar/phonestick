@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Phone Stick</title>
+<!--
+  Phone Stick - Google Cast receiver (Cast Application ID 754CD6BD).
+
+  This is the page a Google TV / Android TV / Chromecast loads when the Phone Stick app casts to it. It holds no game:
+  the game runs on the player's phone, which serves it on the home Wi-Fi. The phone app sends this page one message on
+  the channel "urn:x-cast:com.phonestick" -
+      {"t":"open","url":"http://<phone address>:8080/"}
+  and the page opens that address. Only addresses on a home network (private IP ranges, port 8080) are accepted, so
+  this page can never be used to open any other site.
+
+  Hosted on GitHub Pages: https://siddheshkarekar.github.io/phonestick/cast/  (that address goes in the Cast console).
+  Version 1, 18 Nov 2026.
+-->
+<script src="https://www.gstatic.com/cast/sdk/libs/caf_receiver/v3/cast_receiver_framework.js"></script>
+<style>
+  html, body { margin: 0; height: 100%; background: #0B1020; color: #E8EDF5;
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif; overflow: hidden; }
+  .wrap { height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 22px; }
+  h1 { margin: 0; font-size: 64px; color: #FFD24A; letter-spacing: 1px; }
+  p { margin: 0; font-size: 30px; color: #9FB3D9; }
+  .ring { width: 56px; height: 56px; border: 6px solid #FFD24A; border-right-color: transparent; border-radius: 50%;
+    animation: spin 1s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  iframe { position: fixed; inset: 0; width: 100%; height: 100%; border: 0; display: none; background: #0B1020; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Phone Stick</h1>
+  <div class="ring"></div>
+  <p id="msg">Connecting to your phone...</p>
+</div>
+<iframe id="game" allow="autoplay"></iframe>
+<script>
+  const NS = 'urn:x-cast:com.phonestick';
+  const msg = document.getElementById('msg');
+
+  // only the phone's own game address on a home network: http://<private IP>:8080/
+  function safe(url) {
+    try {
+      const u = new URL(url);
+      if (u.protocol !== 'http:' || u.port !== '8080') return null;
+      const ip = u.hostname.split('.').map(Number);
+      if (ip.length !== 4 || ip.some(n => !(n >= 0 && n <= 255))) return null;
+      const home = ip[0] === 10 || (ip[0] === 192 && ip[1] === 168) || (ip[0] === 172 && ip[1] >= 16 && ip[1] <= 31);
+      return home ? u.origin + '/' : null;
+    } catch (e) { return null; }
+  }
+
+  // Two ways to show the game; the phone app picks (default "go"):
+  //  "go"    - this page is replaced by the phone's game page (works where the TV allows it)
+  //  "frame" - the game page is shown inside this page
+  function open(url, how) {
+    msg.textContent = 'Opening the game...';
+    if (how === 'frame') { const f = document.getElementById('game'); f.src = url; f.style.display = 'block'; }
+    else window.location.replace(url);
+  }
+
+  const context = cast.framework.CastReceiverContext.getInstance();
+  context.addCustomMessageListener(NS, (event) => {
+    const d = event.data || {};
+    if (d.t !== 'open') return;
+    const url = safe(d.url);
+    if (!url) { msg.textContent = 'This address is not a Phone Stick game.'; return; }
+    open(url, d.how);
+  });
+  const options = new cast.framework.CastReceiverOptions();
+  options.disableIdleTimeout = true;          // a game can run longer than the TV's idle limit
+  options.customNamespaces = { [NS]: cast.framework.system.MessageType.JSON };
+  context.start(options);
+</script>
+</body>
+</html>
